@@ -40,8 +40,8 @@ The dummy-variables script also has two short sections that use `gdpRegions.rda`
 
 ## Credits
 
-- Course instructor: **Prof. Shahryar Minhas**, Michigan State University. Lab 2 (Problem Set 1 solutions) and the dummy-variables script are his; several labs build on his course materials, including the `smTheme()` plotting theme.
-- Lab instruction, Labs 1 and 3 to 6, and the review lab: **Bailey G. Oates**.
+- Course instructor: **Dr. Shahryar Minhas**, Michigan State University. Lab 2 (Problem Set 1 solutions) and the dummy-variables script are his; several labs build on his course materials, including the `smTheme()` plotting theme.
+- Lab instruction, Labs 1 and 3 to 6, and the review lab: **Bailey Oates**.
 
 ## Contact
 
