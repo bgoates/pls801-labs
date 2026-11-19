@@ -1,0 +1,556 @@
+---
+title: 'Combined Lab: Log Models and Multiple Regression'
+author: 'Bailey Oates'
+date: '11/07/2024'
+output: pdf_document
+---
+
+# Overview
+In this lab, we will explore log models and multiple regression models, but we will spend some time using plot predictions. Plot predictions is super useful because it allows us to visualize the relationship between our IV and DV, while also taking into account the uncertainty in our estimates. Plotting predictions also makes it easier to see whether your model accurately reflects the real-world patterns in the data, understand the effects of variables, and communicate findings more clearly.
+
+# log models 
+
+today we are going to review log models - we are concerned with this because we want to know how linear models are affected when one or more variables have been log transformed. 
+
+but first, lets load in some packages.
+
+```{r}
+library(tidyverse)
+library(readr)
+library(ggplot2)
+```
+
+# non linear relationships - no log transformation made 
+
+first, lets set a seed. why is it important to set a seed? 
+- reproducibility and consistency. Setting a seed ensures that the sequence of random numbers you generate is the same each time you run your code.
+
+```{r}
+# set a seed
+set.seed(6886)
+
+# number of observations to simulate
+n = 1000
+
+# lets generate an independent variable
+# we want the generated ages to be normally distributed
+# with 10 as the center age and 3 as the sd
+age = rnorm(n, 10, 3)
+
+# lets set up a dependent variable
+# these values are chosen arbitrarily to demonstrate a particular type of rel
+# rnorm(n) generates random numbers from a normal distribution with mean 0 and sd 1
+# this is added in to introduce some noise
+income = 0 + 12.86*age - 0.62*age^2 + rnorm(n)
+
+# merge our two new variables into a data frame
+df1 = data.frame(age, income)
+         
+# create a scatter plot   
+ggplot(df1, aes(age, income))+
+  geom_point()
+
+# run model without any transformations
+mod = lm(income ~ age, data=df1)
+
+# plot with our regression line
+df1$my_nice_hat = coef(mod)[1] + coef(mod)[2]*df1$age
+
+ggplot(df1, aes(age, income))+
+  geom_point()+
+  theme_bw()+
+  geom_line(aes(y=my_nice_hat), color="red")
+
+```
+
+# log transformation. log - level relationship
+
+do you remember why it is important to take the log of a variable? 
+- log transformations are used to make highly skewed distributions less skewed. 
+
+```{r}
+# set a seed
+set.seed(6886)
+
+# number of observations to simulate
+n = 1000
+
+# lets generate an independent variable
+educ = rnorm(n, 10, 3)
+
+# lets set up a dependent variable
+wage = .1 + .15*educ + .1*rnorm(n)
+
+# we'll exponentiate so that
+# wage exponentially grows with
+# education
+wage = exp(wage)
+
+# create a data frame with our two variables
+df2 = data.frame(educ, wage)
+
+# run a level - level models
+le_le_mod = lm(wage ~ educ, data=df2)
+
+# visualize the results on top
+# of a scatter of the data
+df2$my_nice_hat = coef(le_le_mod)[1] + coef(le_le_mod)[2]*df2$educ
+
+ggplot(df2, aes(educ, wage))+
+  geom_point()+
+  theme_bw()+
+  geom_line(aes(y=my_nice_hat), color="red")
+```
+
+why does this plot look iffy? The relationship between education and wages is not linear, but rather exponential. this is why we see a curve in our plot.
+
+so, maybe we should run a log-level model instead. 
+
+what is a log-level relationship? 
+- a model where the dv is logged, but the iv is not.
+
+$\log(y) = \beta_0 + \beta_1 x + \epsilon$
+
+- $\log(y)$ = dv/outcome 
+- $\beta_0$ = intercept
+- $\beta_1$ = slope
+- $x$ = iv
+- $\epsilon$ = error term
+
+```{r}
+# run a  log - level model, we need to log our dv for that 
+df2$logwage = log(df2$wage)
+
+df2 = df2 %>%
+  mutate(logwage=log(wage))
+
+log_le_mod = lm(logwage ~ educ, data=df2)
+summary(log_le_mod)
+
+# visualizing our results...
+# my_nice_hat is the predicted value of logwage
+df2$my_nice_hatlog = coef(log_le_mod)[1] + coef(log_le_mod)[2]*df2$educ
+
+# lets plot
+ggplot(df2, aes(educ, logwage))+
+  geom_point()+
+  theme_bw()+
+  geom_line(aes(y=my_nice_hatlog), color="red")
+
+```
+
+how would we interpret the plot above?
+- if we change x by 1 (unit), we'd expect our y variable to change by 100*beta_1 percent. in this context, if we change education by one unit, we'd expect wages to increase by 15%.
+
+# example of a level - log relationship 
+- a model where the iv is log-transformed, but the dv is in its original form (level). this is less common.
+
+```{r}
+# set a seed
+set.seed(6886)
+
+# number of observations to simulate
+n = 1000
+
+# generate some left-skewed iv
+# note that we're using the rbeta function to generate a beta distribution
+# 2 and 5 are the shape parameters of the beta distribution
+# we're generating a beta distribution because we want to generate a left-skewed distribution
+x1 = rbeta(n, 2, 5)
+
+# generate y
+# we're adding some noise to our y variable to make it more realistic
+# 1 is the intercept, 2 is the slope, and rnorm(n) is the noise
+y = 1 + 2*log(x1) + rnorm(n)
+
+# organize data into a data frame
+df3 = data.frame(x1, y)
+
+# fit a linear model to the data
+model <- lm(y ~ log(x1), data = df3)
+
+# add predicted values to the data frame
+# again, predict is used to generate predicted values which helps us visualize 
+# the rel bw our iv and dv
+# to predict, we are using my_nice_hat as the name of the new variable
+df3$my_nice_hat <- predict(model, newdata = df3)
+
+# plot the data and add the predicted values line
+ggplot(df3, aes(x1, y)) +
+  geom_point() +  # scatter plot of actual data
+  geom_line(aes(x1, my_nice_hat), color = "red") +  # line plot of predicted values
+  labs(title = "Scatter Plot with Predicted Values",
+       x = "x1",
+       y = "y")
+```
+How would we interpret the plot above?
+- if we change x by 1 unit, we'd expect y to increase by 2%. x is log-transformed, so we're looking at the percentage change in y for a one-unit change in x.
+
+# level - level relationship
+
+- level - level relationships are the most common type of relationship in linear models. this is when both the iv and dv are in their original form. 
+
+```{r}
+# run level level model
+leleMod = lm(y ~ x1, data=df3)
+
+df3$my_nice_hat = coef(leleMod)[1] + coef(leleMod)[2]*df3$x1
+
+ggplot(df3, aes(x1, y))+
+  geom_point()+
+  theme_bw()+
+  geom_line(aes(y=my_nice_hat), color="red")
+```
+
+# example of a log-log relationship 
+- log-log relationships are when both the iv and dv are logged 
+
+```{r}
+# set a seed
+set.seed(6886)
+
+# number of observations to simulate
+n = 1000
+
+# this is just a random variable
+sales = rnorm(n, 5, 1)
+
+# this is a random variable that is dependent on sales
+salary = 4.8*sales^.26 + .1*rnorm(n) # WE'RE CREATING EXAMPLES HERE, SO THE VALUES ARE ARBITRARY
+
+# make a data frame
+df4 = data.frame(sales, salary)
+
+# creating a log-log model
+log_logmod = lm(salary ~ sales, data=df4)
+
+# visualizing results with the correct model's coefficients
+df4$my_nice_hat = coef(log_logmod)[1] + coef(log_logmod)[2]*df4$sales
+
+# plotting
+ggplot(df4, aes(sales, salary)) +
+  geom_point() +
+  theme_bw() +
+  geom_line(aes(y=my_nice_hat), color="red")
+
+```
+
+# multiple regression
+
+```{r}
+# set a seed
+set.seed(6886)
+
+# population size
+pop = 1000
+
+# simulate an independent variable
+x1 = rnorm(pop, 10, 3)
+
+# an error term
+# we are getting a normally distributed error term for population
+u = rnorm(pop)
+
+# generate y
+# remember that we are generating y as a function of x1
+# and that the values are arbitrary
+y = 2 + 1.3*x1 + u
+
+# organize into a data.frame
+popData = data.frame(
+  y=y, x1=x1 )
+
+# run a  model on the population
+popMod = lm(y ~ x1, data=popData )
+popMod
+
+# choose number of random samples to take
+sims = 1000
+
+# sample size for each random sample
+sampSize = 30
+
+# matrix to store the results
+# CIs = confidence intervals
+sampCIs = matrix(NA, nrow=sims, ncol=2)
+
+# conduct 1000 sims, each time start by taking thirty
+# random observations from the data,  run the model
+# and store the coefficient results in sampCoefs
+for(ii in 1:sims){
+  sampData = popData[sample(1:nrow(popData), 30),]
+  sampMod = lm(y ~ x1, data=sampData )
+  sampCIs[ii,1] = summary(sampMod)$'coefficients'[2,1] - 1.96*summary(sampMod)$'coefficients'[2,2]
+  sampCIs[ii,2] = summary(sampMod)$'coefficients'[2,1] + 1.96*summary(sampMod)$'coefficients'[2,2]
+}
+
+# estimate the true value of beta_1 in the population given that y = 2 + 1.3*x1 + u
+  mean(sampCIs[,1] <= 1.3 & 1.3 <= sampCIs[,2])
+
+# how does it fare off in comparison to the beta 1 estimated in our model? 
+  summary(popMod)
+```
+
+lets interpret the results above:
+- our model shows that x1 is a strong and significant predictor of y, explaining a large proportion of the variance in y. the high t-value and low p-value for x1 highlight its strong role in predicting y.
+
+# multiple regression. 
+
+we are going to be using data from Fish et al. (2003) to run a multiple regression model.
+
+variables of interest: 
+- fhrev: level of democracy, measured as the ten year average of freedom house ratings
+- income: logged gdp per capital
+- elf: ethnic heterogeneity
+- britcol: binary indicating whether country was a former british colony
+
+```{r}
+load('fish.RData')
+```
+
+# bivariate regression. 
+
+now we are going to plot using plot predictions. plot predictions is super useful becasue it allows us to visualize the relationship between our IV and DV, while also taking into account the uncertainty in our estimates. plotting predictions also makes it easier to see whether your model accurately reflects the real-world patterns in the data, understand the effects of variables, and communicate findings more clearly
+
+```{r}
+# run a bivariate regression model
+mod = lm(fhrev~income, data=fish)
+
+# look at coefficients
+mod
+summary(mod)
+```
+
+# lets plot
+
+```{r}
+# but, first lets get predicted values
+fish$fhrevHat = predict(mod)
+
+# and now visualize using gg
+ggplot(fish, aes(x=income, y=fhrev)) +
+  geom_point() +
+  geom_line(aes(y=fhrevHat)) +
+  labs(
+    x='Income',
+    y='Democracy'
+  )+
+  theme_bw()
+
+# lets add a splash of color, specifically, lets color
+# point by whether they were a former british colony
+# or not
+ggplot(fish, aes(x=income, y=fhrev, color=factor(britcol))) +
+  geom_point() +
+  geom_line(aes(y=fhrevHat)) +
+  labs(
+    title = "Effect of Income on Democracy",
+    x='Income',
+    y='Democracy',
+    color='Former British Colony'
+  )+
+  theme_bw()
+
+```
+
+# multiple regression - adding one covariate to our first model...adding covariates to our model can help with many things: 
+
+- controlling for confounding variables
+- increasing the precision of our estimates
+- increasing the accuracy of our predictions
+
+covariates add depth and robustness to regression models.
+
+```{r}
+mod2 = lm(fhrev ~ income + britcol, data=fish)
+
+# take a look at the results
+mod2
+summary(mod2)
+
+# generate predictions for non-british colony case --> remember that we use square brackets
+# to index the coefficient we want from our model. the third coef is multiplied * 0 because 
+# that's the 0 for non-british colonies
+fish$fhrevHat_nonBritCol = coef(mod2)[1] + coef(mod2)[2]*fish$income + coef(mod2)[3]*0
+
+# generate predictions for former british colony case, here, the third coef is multiplied *1 because
+# that's the value for that indicates that a country was a former british colony
+fish$fhrevHat_britCol = coef(mod2)[1] + coef(mod2)[2]*fish$income + coef(mod2)[3]*1
+
+# plot - we include two different lines because we want to see the differences between 
+# non-british colonies and british colonies
+ggplot(fish, aes(x=income, y=fhrev, color=factor(britcol))) +
+  geom_point() +
+  geom_line(aes(y=fhrevHat_nonBritCol), color='red') +
+  geom_line(aes(y=fhrevHat_britCol), color='blue') +  
+  labs(
+    title = "Effect of Income on Democracy: British vs. Non-British Colonies",
+    x = 'Income',
+    y = 'Democracy',
+    color = 'Former British Colony'
+  ) +
+  theme_bw()
+```
+
+# multiple regression model where both of our IV's are continuous variables (and an example on how to safely omit NAs)
+
+```{r}
+fish = fish %>%
+  drop_na(fhrev, income, elf, country) # get rid of NAs only from the variables we're interested in and not the full dataset
+
+# model
+mod3 = lm(fhrev ~ income + elf, data=fish)
+
+# lets peek at the results
+summary(mod3)
+
+```
+
+# lets visualize
+
+```{r}
+# choose some values for elf - note that this is a continuous variable
+# that ranges from 0-1, so we're picking some values based on that. 
+summary(fish$elf)
+
+fish$fhrevHat_elf0 = coef(mod3)[1] + coef(mod3)[2]*fish$income + coef(mod3)[3]*0
+fish$fhrevHat_elf25 = coef(mod3)[1] + coef(mod3)[2]*fish$income + coef(mod3)[3]*.25
+fish$fhrevHat_elf50 = coef(mod3)[1] + coef(mod3)[2]*fish$income + coef(mod3)[3]*.5
+fish$fhrevHat_elf75 = coef(mod3)[1] + coef(mod3)[2]*fish$income + coef(mod3)[3]*.75
+
+# plotting 
+ggplot(fish, aes(x=income, y=fhrev, color=factor(britcol))) +
+  geom_point() +
+  geom_line(aes(y=fhrevHat_elf0, linetype = "0"), color='red') +
+  geom_line(aes(y=fhrevHat_elf25, linetype = "0.25"), color='blue') +
+  geom_line(aes(y=fhrevHat_elf50, linetype = "0.5"), color='green') +
+  geom_line(aes(y=fhrevHat_elf75, linetype = "0.75"), color='black') +
+  labs(
+    title = "Income on Democracy with Diff Levels of Ethnolinguistic Fractionalization",
+    x='Income',
+    y='Democracy',
+    color='Former British Colony',
+    linetype='Ethnic Heteroteneity Level (ELF)'
+  ) +
+  scale_linetype_manual(values = c("solid", "solid", "solid", "solid"))
+```
+
+# if we want to save up a few lines of code, we can do the following...
+
+```{r}
+ggData = pivot_longer(fish, cols=fhrevHat_elf0:fhrevHat_elf75) # we use pivot_longer so that we can plot
+
+ggplot(ggData, aes(x=income, y=fhrev)) +
+  geom_point(aes(color=factor(britcol))) +
+  geom_line(aes(y=value, color=name)) +    
+  labs(
+    title = "Income on Democracy with Varying Levels of Ethnolinguistic Fractionalization",
+    x='Income',
+    y='Democracy',
+    color='Former British Colony'
+  )
+
+ggplot(ggData, aes(x=income, y=fhrev)) +
+  geom_point(aes(color=factor(britcol))) +
+  geom_line(aes(y=value, color=name)) +    
+  labs(
+    title = "Income on Democracy with Varying Levels of Ethnolinguistic Fractionalization",
+    x = 'Income',
+    y = 'Democracy',
+    color = 'Legend', ) + # Generic title for the legend
+  scale_color_manual(
+    values = c("lightcoral", "lightblue", "darkgreen", "blue", "orange", "violet"),
+    labels = c(
+      "Not a Former British Colony", 
+      "Former British Colony",
+      "ELF = 0", 
+      "ELF = 0.25", 
+      "ELF = 0.5",
+      "ELF = 0.75")
+  )
+
+# we can also use the predict function to generate predictions to use later on...
+scenELF = data.frame( # generate a new data frame for these predictions
+  intercept = 1, # choose an intercept
+  income = fish$income, # take the values of income that we already have on our original variable 
+  elf = .75 # pick our elf level
+)
+
+elf75Preds = predict(mod3, newdata=scenELF) # we get the values to estimate our model when elf = .75. we would plot this in the same way as above
+```
+
+# omitted variable bias
+
+- omitted variable bias refers to the bias in the OLS estimator when variable $x_1$ is correlated with an    omitted variable $x_2$ and the outcome variable $y$. 
+
+so, for omitted variable bias to occur, two conditions must be satisfied:
+
+1. the omitted variable $x_2$ is correlated with $x_1$.
+2. the omitted variable $x_2$ is correlated with the outcome variable $y$.
+
+the direction of the bias depends on whether the correlation between two variables $x_1$ & $x_2$ (coding this would just be cor(x1,x2) ) and $\beta_2$ have the same sign. If they do, the bias is positive; if not, the bias is negative. A positive bias means we’re overstating the effect of $x_1$ on $y$, while a negative bias means we’re understating it. In research, we’re generally more concerned about overstating effects than understating them.
+
+the size of the bias really matters. It's much easier to justify ignoring a small bias than a big one, but we often don’t have a clear sense of how big it actually is.
+
+# lets do some analysis for income and democracy
+
+```{r}
+# setting the seed to match our earlier code
+set.seed(6886)
+
+# simulate data for this example
+# tibble is another way to create a data frame
+n <- 200
+data <- tibble(
+  income = rnorm(n, mean = 50000, sd = 10000),   # simulating income variable
+  britcol = sample(c(0, 1), n, replace = TRUE),  # indicator for former British colony
+  democracy = 0.3 * income + 15 * britcol + rnorm(n, sd = 5000) # democracy scorex
+)
+
+# simple model without britcol (potential OVB) and just looking at income
+model1 <- lm(democracy ~ income, data = data)
+summary(model1)
+
+# now lets create new data for predictions
+dem_income_data <- data.frame(income = seq(min(data$income), max(data$income), length.out = 100))
+
+dem_income_data$predicted_democracy <- predict(model1, newdata = dem_income_data)
+
+# plot the data and overlay predictions
+ggplot(data, aes(x = income, y = democracy)) +
+  geom_point(color = "black") +  # Scatter plot of actual data
+  geom_line(data = dem_income_data, aes(x = income, y = predicted_democracy), color = "red") +
+  labs(title = "Income vs. Democracy with Model Prediction",
+       x = "Income",
+       y = "Democracy Score") +
+  theme_minimal()
+```
+
+does our model suffer from omitted variable bias? 
+
+now lets imagine a case where `income` is $x_1$ and `britcol` is $x_2$
+
+1. do we believe country income is correlated with being a former british colony?
+2. do we believe being a former british colony is correlated with current democracy levels?
+
+what's the expected sign of the bias?
+
+1. do we believe `income` and `britcol` are positively or negatively related?
+2. do we believe `income` and `democracy` are positively or negatively related?
+3. would we be underestimating or overestimating the effect of income on demoracy if we omit being a former british colony?
+
+```{r}
+# model with britcol to control for potential OVB
+
+model2 <- lm(democracy ~ income + britcol, data = data)
+summary(model2)
+
+# compare the estimated effect of income on democracy
+
+cat("Coefficient for income without britcol:", coef(model1)["income"], "\n")
+cat("Coefficient for income with britcol:", coef(model2)["income"], "\n")
+```
+
+# interpretation:
+- if the income coefficient changes significantly between model1 and model2,
+  it suggests that omitting 'britcol' caused omitted variable bias.

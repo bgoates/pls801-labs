@@ -1,0 +1,635 @@
+---
+title: "Lab 04: OLS Regression"
+output:
+  pdf_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+
+# 0. Tidying up
+
+## 0a. Clearing workspace in R
+
+There are several ways to clear your work environment in R: 
+
+* Click `Tools` on the menu on top of your screen and then click on `Global Options`. Under the General tab, you can uncheck "Restore .RData into workspace at startup" and pick Never for "Save workspace to .RData on exit". With these settings, you will start with a clean work environment everytime you restart R. You can quickly restart R by clicking `Run` on the top right corner of the text editor and selecting "Restart R and Clear Output".
+* Click on the brush icon in the Environment window in RStudio and click "Yes" when asked whether you want to remove all objects from the environment.
+* Use the rm() function as shown below. 
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+ # Remove all the variables that are in your work environment
+
+rm(list=ls())
+
+# You can also selectively remove only certain variable(s) by adding the name of the variable in the bracket.
+
+# rm() 
+```
+
+But, just removing objects in your workspace is not equivalent to starting with a completely clean slate. Any packages that you have loaded in using `library` will stay loaded in your current R session. If you want to start completely fresh, you need to restart the console. You can do this by going to the `Session` menu and selecting `Terminate R`. 
+
+## 0b. Line length in PDF from RMarkdown
+
+Sometimes, long codes and comments can run off the PDF page when knitted. To avoid this, split code into multiple lines by ending with an open bracket or operator, and start a new line for comments with #. 
+Here is a [link](https://stackoverflow.com/questions/6329962/split-code-over-multiple-lines-in-an-r-script) to a discussion on ways in which you can split code over multiple lines. 
+
+# 1. Load packages
+
+This week we will introduce a new package: `jtools`. 
+
+`jtools` allows you to visualize and report results from regression models in a table. 
+Check out the vignette for the package here: https://jtools.jacob-long.com/. 
+
+```{r, echo=T, results="hide", message=F, warning=F}
+# install.packages("jtools")
+
+# You can delete these install.packages lines once you install the packages.
+
+# Libraries
+library(tidyverse)
+library(jtools)
+library(ggplot2)
+```
+
+# 2. Load dataset for this week
+
+```{r, echo=T, results="hide", message=F, warning=F}
+# Load dataset
+news <- read_csv("news.csv")
+newsweek <- read_csv("newsweek.csv")
+```
+
+# 3. Hypothesis testing with t-test
+
+As review, we'll start with some t-test work.
+
+What is a t-test? 
+- **T-test** are statistical tests used to compare the means of two groups. This helps is see if they are significantly different from each other. It helps us determine whether the differences observed between groups are due to random chance or reflect true differences.
+
+The dataset `news.csv` is from a (pretend) RCT on the effects of providing young voters with more information about politics:
+
+* 520 students were randomly sampled from a centralized database of all U.S. high schoolers and invited to participate in a (pretty easy) 50-question test of political knowledge, where a small monetary award was provided for each correct answer (all agreed to -- and did -- participate). The `knows` variable contains the number of correct answers.
+
+* 200 of the students were randomly assigned to receive a complimentary paper subscription to The New York Times starting 6 months from the date of the quiz. The `treated` variable equals 1 if the student received a newspaper, 0 otherwise.
+
+$H_0$: Students who received free newspapers do not score differently on the knowledge test than students who didn't receive papers.
+$H_1$: Students who received free newspapers scored differently on the knowledge test than students who didn't receive papers.
+
+## 3a. T statistic
+
+The general break down: 
+
+$\bar{X}_t$ = mean of the treatment group 
+
+$\bar{X}_c$ = mean of the control group
+
+$\hat{\sigma}_{\bar{X}_t - \bar{X}_c}$ = estimated standard error of the difference between our two means. This basically shows us the "noise"/variability
+
+
+$$
+t = \frac{signal}{noise} = \frac{\bar X_t - \bar X_c}{\hat \sigma_{\bar{X_t}- \bar{X_c}}} \\ 
+$$
+where:
+
+$\hat{\sigma}_{\bar{X}_t}$ = estimated variance of the treatment group mean
+$\hat{\sigma}_{\bar{X}_c}$ = estimated variance of the control group mean
+$n_t$ = sample size of the treatment group
+$n_c$ = sample size of the control group
+
+$$
+\hat \sigma_{\bar{X_t}- \bar{X_c}} = \sqrt{\frac{\hat \sigma_{\bar{X_t}}}{n_t} + 
+\frac{\hat \sigma_{\bar{X_c}}}{n_c}
+}  \\
+$$
+Steps:
+
+## 1.) Make and save descriptive stats by group
+
+```{r}
+# same as above, but now we're saving them to an object, tst
+tst <- news %>%
+  group_by(treated) %>%
+  summarize(
+    mean = mean(knows), 
+    var = var(knows), 
+    sd = sd(knows),
+    n = length(knows)) %>%
+  as.data.frame()
+
+rownames(tst) <- c("c", "t") # Name our rows
+
+# extract treated observations
+t = tst %>% filter(treated == 1) 
+t
+
+# extract control observations
+c = tst %>% filter(treated == 0)
+c
+```
+
+## 2.) Compute T-statistic
+* Save the number of observations, the standard deviation, and the mean for each group as values
+* Compute the T-statistic using the saved values
+
+```{r}
+# Numbers of observations
+n_c <- c$n
+n_t <- t$n
+
+# Standard deviations
+sd_c <- c$sd
+sd_t <- t$sd
+
+# Means 
+mean_c <- c$mean
+mean_t <- t$mean
+
+# Compute denominator
+sigma_tc <- sqrt(sd_c^2/n_c + sd_t^2/n_t)
+
+# Compute T-statistic
+t_stat <- (mean_c - mean_t)/ sigma_tc
+t_stat
+
+# Verify against built-in command
+t.test(knows ~ treated, data = news)
+```
+
+## 3b. T-test against a "true value"
+Null hypothesis that an equal number of students were assigned to our treatment and control condition is tested, i.e. that `treated == 0.5`.
+
+Basically, we know that a t-test against a "true value" is a one-sample t-test that compares the mean of a sample (the proportion of students assigned to treatment) against a known or hypothesized value (in our case, 0.5). The goal here is to see if the observed data significantly deviates from this hypothesized value.
+
+Null Hypothesis: In hypothesis testing, the null hypothesis ($H_0$) is the assumption we are testing against. Here, the null hypothesis is that the proportion of students in the treatment group is equal to 0.5. So, we are testing the hypothesis that half of the students were assigned to the treatment condition.
+
+treated == 0.5: This is the hypothesized proportion of students assigned to the treatment group, indicating that 50% of the students were assigned to the treatment condition.
+
+```{r}
+t.test(news$treated, mu = 0.5)
+```
+
+# 4. OLS regression
+
+We'll use a different dataset for the OLS Regression, `newsweek.csv`, which is from a similar (pretend) RCT on the effects of providing young voters with more information about politics:
+
+* As before, 520 students were randomly sampled from a centralized database of all U.S. high schoolers and invited to participate in a (pretty easy) 50-question test of political knowledge, where a small monetary award was provided for each correct answer (all agreed to -- and did -- participate). The `knows` variable contains the number of correct answers.
+
+* In this new experiment, the students were randomly assigned to receive complimentary paper copies of The New York Times starting 1-26 weeks before the date of the quiz. The `weeks` variable equals the number of weeks the student received a newspaper before the test.
+
+$H_0$: An increase in the number of weeks a student received copies of NYT prior to the test is not associated with any change in score on the knowledge test.
+$H_1$: An increase in the number of weeks a student received copies of NYT prior to the test is associated with a change in score on the knowledge test.
+
+Basic Regression Formula:
+
+$$Y_i = \beta_0 + \beta_1 X_i + u_i$$
+
+- The index $i$ runs over the observations, $i=1,\dots,n$
+
+- $Y_i$ is the *dependent variable* (aka the *regressand* , *left-hand var*, or *outcome var*)
+
+- $X_i$ is the *independent variable*, (aka the *regressor* or *right-hand variable*)
+
+- $\beta_0$ is the *intercept* of the population regression line.
+
+- $\beta_1$ is the *slope* of the population regression line. $\beta_1$ tells us the marginal change in    $Y_i$ given one unit change in $X_i$.
+
+- $u_i$ is the *error term*.
+
+## 4a. The OLS Estimator
+
+- The OLS estimator chooses the regression coefficients such that the estimated regression line is as "close" as possible to the observed data points. 
+
+- Closeness is measured by the sum of the squared errors made in predicting $Y$ given $X$. Let $b_0$ and $b_1$ be some estimators of $\beta_0$ and $\beta_1$. 
+
+*Sum of Squared Residuals* - a way of measuring how far off your predictions are from the actual data points.
+
+- Residuals = "leftover" parts. The differences between what you actually observed (the real data) and what your model predicted.
+- You square these differences to make sure they’re all positive (so big mistakes don't cancel out smaller ones), and then add them all up.
+
+Overall, the sum of squared residuals tells you how much your model is missing the mark overall. If the sum is *small* (anywhere between 0 and 1), your model is doing a good job at predicting the data. If the sum is *large*, your model isn’t very accurate, meaning it’s making bigger mistakes in predicting the actual values.
+
+
+The sum of squared residuals can be expressed as:
+
+
+$$ SSR =  \sum^n_{i = 1} \hat{u_i}^2 $$
+
+$$ SSR = \sum^n_{i = 1} (y_i - \hat{y_i})^2  $$
+
+$$ SSR = \sum^n_{i = 1} [y_i - (b_0 + b_1 x_i)]^2 $$
+
+## 4b. Calculating OLS estimators
+
+$$ \hat\beta_0 = \bar{y} - \hat\beta_1  \bar{x} $$
+
+$$ \hat\beta_1 = \frac{ \sum_{i = 1}^n (y_i - \bar{y} ) (x_i - \bar{x} ) }{ \sum_{i = 1}^n (x_i - \bar{x} )^2 } $$
+
+Calculate estimators by hand:
+
+```{r, message=F, warning=F, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+# y as dependent variable
+y <- newsweek$knows
+# x as independent variable
+x <- newsweek$weeks
+
+# beta1 (slope)
+# How would you interpret the marginal change in test score given a change in the number of weeks a student received the newspaper before the exam? 
+beta1 <- sum((y - mean(y)) * (x - mean(x))) / sum (((x - mean(x))^2))
+beta1
+
+# beta0 (intercept)
+beta0 <- mean(y) - beta1 * mean(x)
+beta0
+
+# predicted y hat
+y_hat <- beta1 * x + beta0
+
+# Compare predicted to actual values
+newsweek$knows_hat <- y_hat
+newsweek$knows_u2 <- (y - y_hat)^2
+head(newsweek)  # in RStudio, View(newsweek) opens the full table
+```
+
+## 4c. OLS with `lm()`
+
+R has a built-in function that calculates the estimators automatically given that we provide the following input: dependent variable, independent variable(s), and the dataset that those variables are located in.
+
+*Interpretation*
+- The regression results show that weeks has a significant and positive effect on knows, with a slope of 0.239 (p < 0.001). This means that for each additional week, the predicted value of knows increases by approximately 0.24, indicating a meaningful relationship between the two variables.
+
+```{r}
+# Run regression
+# dv ~ iv 
+# we are trying to predict or explain our var 'knows' using the var 'weeks' as the IV/predictor
+newsweek_reg <- 
+# Fitting the OLS regression model
+model_weeks <- lm(knows ~ weeks, data = newsweek)
+
+# average marginal effect with the marginaleffects package
+library(marginaleffects)
+avg_slopes(model_weeks)
+    
+# R built-in function for viewing the results from regression
+summary(newsweek_reg) 
+# A function from the jtools package that allows us to view the results from regression
+summ(newsweek_reg) 
+```
+
+## 4d. Measures of fit
+
+Total Sum of Squares:
+
+$$ SST = \sum^n_{i = 1} (y_i - \bar{y})^2  $$
+
+
+Explained Sum of Squares:
+
+$$ SSE = \sum^n_{i = 1} (\hat{y_i} - \bar{y})^2  $$
+
+
+Residual Sum of Squares:
+
+$$ SSR = \sum^n_{i = 1} (y_i - \hat{y_i})^2  $$
+Mean Squared Error:
+
+$$ MSE = \frac{1}{n}\sum^n_{i = 1} ({y_i}- \hat y_i)^2 = \frac{SSR}{n} $$
+$R^2$:
+
+$$ R^2 = \frac{Explained}{Total} = \frac{ESS}{TSS}  $$
+
+```{r}
+# TSS
+tss <- sum((y - mean(y))^2)
+tss
+# ESS
+ess <- sum((y_hat - mean(y))^2)
+ess
+# SSR
+ssr <- sum((y - y_hat)^2 )
+ssr
+# R^2
+r_2 = ess/tss
+r_2
+```
+
+### Scatter plot
+
+Remember to first generate predicted values. We don't always need to generate predicted values when we are graphing, but we do need to when we are working with OLS regression modeling. 
+
+Why? 
+*Regression line:* in OLS, we need predicted values because they give us the line that best fits our data.
+*Residual analysis:* the difference bw actual (Y) and predicted values (residuals/$\hat{Y}$) helps check how well the model actually fits our data.
+*Assessing model performance:* comparing actual and predicted values tells us how good our model is at making predictions.
+
+Interpretation: there is a slight positive relationship between the number of weeks of free newspapers and the number of correct answers on a political knowledge test. However, the spread of points suggests that the impact of newspaper access on political knowledge is small and other factors prolly play a significant role.
+
+```{r}
+# here we are generating the predicted values so we can continue to work in OLS 
+# again, we are creating a model to predict our dv knows based on the number of weeks 
+newsweek_reg <- 
+# Fitting the OLS regression model
+model_weeks <- lm(knows ~ weeks, data = newsweek)
+
+# average marginal effect with the marginaleffects package
+library(marginaleffects)
+avg_slopes(model_weeks)
+    
+newsweek$my_nice_hat = coef(newsweek_reg)[1] + coef(newsweek_reg)[2]*newsweek$weeks
+
+ggplot(data=newsweek, aes(x=weeks, y=knows))+
+  geom_point()+
+  theme_bw()+
+  labs(title="Access to news and political knowledge", 
+       x="Weeks of free newspapers",
+       y="# of Correct Answers")+
+  geom_line(aes(y=my_nice_hat), color="red")
+```
+
+### Predicted values
+
+But, what even are predicted values? Predicted values are the estimates that a model calculates for the DV based on the input values of the IV(s)
+
+So, in the context of our example: we have a model that predicts political knowledge (our dv: knows) based on the number of weeks of free newspapers (our iv: weeks). For each value of weeks, our model generates predicted values of what it thinks the political knowledge (or knows) should be based on the relationship it has learned from the data.
+
+Interpretation: we still are seeing the relationship between the number of weeks of free newspapers and the number of correct answers on a political knowledge test. In this graph, though, we have two lines representing different trends. The blue line represents a regression line that shows a slight positive relationship, indicating that as access to newspapers increases, political knowledge tends to improve marginally. The red horizontal line and red vertical line show us specific reference points (e.g., an average number of correct answers and a particular number of weeks). Overall, the trend is pretty flat with a lot of variability in the data.
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+# The predicted values are the points on a regression line.
+# If x (Weeks of free newspapers before the test) is e.g. 15 and 20, 
+# we predict y (# of correct answers) to be...
+
+# Calculating predicted values by hand
+x_val1 <- 15 
+x_val2 <- 20
+
+# X values
+x_val1
+x_val2
+
+# Predicted y values
+beta1 * x_val1 + beta0
+beta1 * x_val2 + beta0
+
+# What is the predicted test score for those who did not get any newspaper (weeks = 0)?
+beta0
+
+# If a student were to receive the newspapers two weeks earlier than what she gets now,
+# what is her predicted increase in test score?
+beta1 * 2
+
+# We can also predict y values using predict() function on R
+x_val <- c(15,20)
+x_val <- data.frame(x_val)
+names(x_val) <- c('weeks')
+# predict(function) requires the model (newsweek_reg) and the x values as inputs.
+predict(newsweek_reg, x_val)
+
+# Plotting the location of the predicted values when x (weeks) = 15
+# this can kinda be any number/location you want (interesting point of interest, 
+# milestone of some kind within the data, or just cuz)
+
+ggplot(data=newsweek, aes(x=weeks, y=knows))+
+  geom_point()+
+  theme_bw()+
+  labs(title="Access to news and political knowledge", 
+       x="Weeks of free newspapers",
+       y="# of Correct Answers")+
+  geom_line(aes(y=my_nice_hat), color="blue")+
+  geom_vline(aes(xintercept=x_val1), color="red")+
+  geom_line(aes(y=(beta0+beta1*x_val1)), color="red")
+```
+
+## 4e. Binary OLS regression
+
+Here, we return to the original `news` dataset.
+
+(The t-test differs slightly from the one we calulated earlier because `lm()` pools the variances -- when we set `var.equal = T`, the results from `lm()` and `t.test` are the same.)
+
+```{r}
+# Run regression
+news_reg <- 
+# Fitting the OLS regression model
+model_treated <- lm(knows ~ treated, data = news)
+
+# average marginal effect with the marginaleffects package
+library(marginaleffects)
+avg_slopes(model_treated)
+    
+summary(news_reg)
+
+t.test(knows ~ treated, data = news, var.equal = T)
+```
+
+# 5. For Loops! 
+
+`for` loop is a useful tool that allows us to perform repetitive tasks (we then will get a block code/single unit for each thing we ask R to spit back out at us). Btw, block codes will end in '{ }'. When we create a loop, R will carry out the instructions we input into the loop a specified number of repetitions or until a specified condition is met.
+
+## 5a. Lets go through a simple example. 
+
+What's going on behind the scene? In the first iteration, 'i' takes the first value in the vector, that is 1 in this case. After reaching the end of the loop, the loop starts over with r taking the second value in the vector. This loop repeats until all values in the vector has been exhausted.
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+# we are asking R for the first 5 sequences
+for (i in 1:5) {
+  print(i)
+}
+
+# now, lets iterate over a character vector. 
+days <- c("monday", "tuesday", "wednesday")
+for (i in days){
+  print(i)
+}
+```
+
+But, when would i use this in my real research?? 
+- Good question. There are several ways we would use for loop. 
+
+*Iterating over data* if you have a dataset with multiple variables or observations, you can use a for loop to perform the same operation on each variable or observation. This is especially helpful in large datasets. Keeps consistency. 
+*Simulations* used in research simulations where you need to repeat an experiment or run multiple iterations of a model with varying parameters.
+*Bootstrapping* used in research where you need to repeat an experiment or run multiple iterations of a model with varying parameters. Resampling in a way. 
+*Same thing across multiple files* if you’re working with multiple data files (survey responses from multiple rounds, data from multiple sources), you can use a for loop to process each file automatically instead of doing it manually.
+*Automatic hypoth testing* when you have multiple hypotheses to test, you can use a for loop to run multiple tests automatically.
+
+
+## 5b. Mathematical operation within `for` loop
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+# Notice that the last value (i=5) is the output that is stored in the work environment
+for (i in 1:5) {
+  a <- i*2
+  print(a)
+}
+a
+
+# If we want to store all outputs from the for loop, we can create an empty vector
+# and then execute the for loop to fill the vector
+a <- c()
+for (i in 1:5) {
+  a[i] <- i*2
+}
+print(a)
+```
+
+## 5c. Nested `for` loop
+
+A `for` loop can be nested in another `for` loop. 
+
+What's happening?
+
+`for` loop starts by setting the outer loop as i = 1, then it goes through the inner loop by setting j = 1,2,3 sequentially. 
+
+`for` loop then goes back to the outer loop and change to i = 2 and proceeds with j = 1,2,3 in sequential order.
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+for (i in 1:2) {
+    for (j in 1:3) {
+        print(paste("i is", i, "j is", j))
+    }
+}
+```
+
+## 5d. `if` statement in `for` loop
+
+With if statement, R checks whether the expression within if() is true. If it is true, R will execute the operation in { } after if(). If false, R will not execute the operation. 
+
+We would use `if` statements if we wanted to
+*Filter data* running an operation only on specific data points (within a certain range).
+*Working in conditionals* counting or summing values that meet a condition.
+*Selecting models* applying different models or methods to subsets of data based on a condition.
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+b <- c(1:10)
+count <- 0
+for (i in 1:length(b)){
+  if(i < 5) {
+    count = count+1}
+}
+
+print(count)
+```
+
+## 5e. `if` and `else` statements in `for` loop
+
+For if-else statement, R will evaluate whether the statement within the bracket after 'if' is true. When the expression in the bracket is true, R will execute the code between the brackets { } after 'if' . When the expression in the bracket is false, R will execute the code between the brackets { } after 'else'.
+
+And overall, when we run this we see: 
+
+How the if-else structure works within a for loop to apply conditional logic during each iteration. The loop evaluates a condition (x < 6) and performs different actions depending on whether that condition is true or false.
+
+```{r, tidy=TRUE, tidy.opts=list(width.cutoff=90)}
+c <- 1:10
+# start a for loop that goes through the indices of c
+for(x in 1:length(c)) {
+  # check if the current index x is less than 6
+  if (x < 6) {
+  # if TRUE, print this statement
+    print(paste("The number is less than 6"))} 
+  # if the condition (x < 6) is FALSE
+  else {
+    print(paste("The number is not less than 6"))}
+}
+```
+
+Okay, now we are going to get into Chi-Square tests and ANOVA. 
+
+# Chi-Square Test
+
+The Chi-Square test is used to determine whether there is a significant association between two categorical variables. It compares the observed frequencies in each category to the frequencies you would expect under the assumption of no association (null hypothesis).
+
+When would i use this in real research??
+*Testing for indep* used to test of independence to determine whether two categorical variables are related (associated) or independent of each other
+*Goodness of fit* used to determine if the observed frequency distribution of a single categorical variable matches an expected distribution.
+*Testing Homogeneity* used to compare the distributions of a categorical variable across different populations to see if they are the same.
+*Evaluating survey responses* used in survey research to test hypotheses about relationships between different groups’ responses.
+*Experiments* when your outcomes are categorical, Chi-Square can be used to compare observed results with expected outcomes based on theoretical predictions or other data.
+
+## 1. Formula
+The formula for the Chi-Square statistic is:
+
+$$ \chi^2 = \sum \frac{(O_i - E_i)^2}{E_i} $$
+
+Where:
+- \( O_i \) is the observed frequency
+- \( E_i \) is the expected frequency
+
+## 2. Example of Chi-Square test
+
+We can do a Chi-Square test using the `chisq.test()` function in R. Here’s an example:
+
+Interpretation: shows a non-significant outcome (p-value = 0.504), meaning there is no significant relationship between the variables being tested, and the null hypothesis of independence cannot be rejected.
+
+```{r}
+# Example of a contingency table
+data <- matrix(c(10, 20, 30, 40), nrow=2)
+colnames(data) <- c("Category1", "Category2")
+rownames(data) <- c("Group1", "Group2")
+
+# Performing Chi-Square test
+chisq.test(data)
+```
+
+The result will give you a p-value that tells you whether the variables are independent (null hypothesis) or not.
+
+# ANOVA (Analysis of Variance)
+
+ANOVA is used to compare the means of three or more groups to see if at least one group mean is different from the others. It helps to test the hypothesis that the means of several groups are equal.
+
+## 1. Types of ANOVA
+
+- **One-Way ANOVA**: Tests the effect of a single factor on a dependent variable.
+- **Two-Way ANOVA**: Tests the effect of two factors on a dependent variable, including interaction effects.
+
+When would i use this in real research?? 
+*Comparing means across multiple groups* 
+*Experiments* where participants are divided into multiple treatment groups and you want to test the effect of different treatments on a continuous outcome.
+*Comparing groups over time* when you collect data from the same participants at multiple time points or under multiple conditions. It accounts for the fact that repeated measurements on the same participants are not independent.
+*Group variance surveys* use this when analyzing survey data to see if there are differences in the responses across multiple groups, such as age, income level, or education.
+
+## 2. Formula
+
+For one-way ANOVA
+
+Formula: 
+
+$$Y_{ij} = \mu + \alpha_i + \epsilon_{ij} $$
+
+Formula breakdown: 
+
+$$Y_{ij} \text{ is the dependent variable.}
+$$
+$$ \mu \text{ is the overall mean.}$$
+
+$$ \alpha_i \text{ is the effect of factor } A \text{ (first independent variable).}$$
+
+$$ \beta_j \text{ is the effect of factor } B \text{ (second independent variable).} $$
+
+$$ (\alpha\beta)_{ij} \text{ is the interaction effect between factors } A \text{ and } B. $$
+
+$$ \epsilon_{ijk} \text{ is the error term.} $$
+
+
+$$ Y_{ij} = \mu + \alpha_i + \epsilon_{ij} $$
+
+For two-way ANOVA: 
+
+Formula: 
+
+$$ Y_{ijk} = \mu + \alpha_i + \beta_j + (\alpha\beta)_{ij} + \epsilon_{ijk} $$
+
+Formula breakdown: 
+
+$$ Y_{ij} \text{ is the dependent variable.} $$
+
+$$ \mu \text{ is the overall mean.} $$
+
+$$ \alpha_i \text{ is the effect of factor } A \text{ (first independent variable).} $$
+
+$$ \beta_j \text{ is the effect of factor } B \text{ (second independent variable).} $$
+
+$$ (\alpha\beta)_{ij} \text{ is the interaction effect between factors } A \text{ and } B. $$
+
+$$ \epsilon_{ijk} \text{ is the error term.} $$
+
+

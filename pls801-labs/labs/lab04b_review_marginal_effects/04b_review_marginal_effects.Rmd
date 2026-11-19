@@ -1,0 +1,233 @@
+---
+title: "Review of Marginal Effects and Model Summary"
+output: html_document
+date: "2024-10-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Today we'll focus on a review of marginal effects and model summary. Instead of going over what we covered last week (again), I went ahead and made lab materials so we can better cover marginal effects, model summary, and review anything else. 
+
+*Marginal Effects* measure the impact that an unit change in one variable has on the outcome variables while all the other variables are held constant. Beta 2 is assigned the constant variable. 
+- avg_slopes(your_model)  (from the marginaleffects package)
+
+*Model Summary* provides detailed info about the results of a model that you’ve fitted (in our case, and from last week, a regression model). 
+- summary(your_model)
+
+In an OLS model with linear effects, estimated coefficients are always equal to the marginal effects (standard interpretation where we say that each unit increase in X leads to an increase of ___ in Y). In this case, it is equal to the estimated coefficient, and it is constant across all values of x.  
+
+What happens with more complicated models with non-linearities? These involve interaction terms, logarithmic terms, or power terms. We'll go over how to deal with them during this lab manually and with a package. 
+
+```{r}
+# load in data
+library(haven)
+library(tidyverse)
+library(readr)
+library(jtools)
+
+data = read.csv("reviewlab_data.csv")
+```
+
+## Variables of interest: 
+- country
+- year
+- v2x_polyarchy = democracy
+- v2cacamps = polarization
+- presidential = is regime presidential?
+- gdppc = gdp per capita
+
+
+## What can we interpret from our `model1`?
+- gdppc has a positive and statistically significant effect on v2x_polyarchy, meaning as a country's GDP per capita increases, its v2x_polyarchy score increases as well.
+- presidential regimes are associated with a lower v2x_polyarchy score compared to non-presidential regimes, and this effect is statistically significant.
+- the model explains about 44% of the variance (we get this from the r sqaured value) in v2x_polyarchy, which is fairly moderate. The model as a whole is statistically significant, suggesting that gdppc and presidential are meaningful predictors of v2x_polyarchy.
+
+```{r}
+# ok, now let's run a simple linear model
+# v2x_polyarchy = our dv and what we are trying to predict or explain
+# gdppc and presidential are the ivs and are the vars that we believe influence or explain v2x_polyarchy
+model1 = lm(v2x_polyarchy ~ gdppc + presidential, data=data)
+
+# and a table with our main results, we can review summary() if yall would like to!
+summary(model1)
+# ok, now interpret. 
+```
+
+`summ` assumes you have a linear model (lm) fitted on the dataset. The `summ` function from jtools provides us with some additional flexibility beyond the basic summary() function we used above. `summ` includes confidence intervals and variance to check for multicollinearity (when two or more ivs in a regression model are highly correlated).
+
+Now, lets interpret our model using `summ`. 
+- gdppc has a small but statistically significant and positive effect on democarcy (v2x_polyarchy), though effect is pretty small. Our model explains about 44% of the variation in the dv, democarcy. Both gdppc and presidential regime are significant predictors, with the presidential variable having a negative relationship with democracy, and gdppc having an insignificant and very small positive impact. There doesn't seem to be any multicollinearity in the model, as the vif (variance inflation factor -- measures how much the variance of a regression coefficient is inflated due to multicollinearity/when two or more predictor variables in a model are highly correlated). 
+
+Note: generally, a VIF < 5 is considered acceptable, meaning that the level of multicollinearity is low and not likely to affect your regression results.
+
+If all your ivs have VIF values closer to 1, it shows that there is minimal or no multicollinearity in your model.
+
+```{r}
+# after we fit our linear model, we can use summ to get a summary of the model
+summ(model1)
+
+# to include more details like confidence intervals, standard errors, etc.
+summ(model1, confint = TRUE, digits = 3, vifs = TRUE)
+```
+
+Ok, so now we have a model and have interpreted it through `summ`.
+
+Now, we can use other visualization tools. There are other cool packages called `modelsummary` and `stargazer`. 
+
+`stargazer` is cool because it's the format that polisci journals usually require and perfectly integrates with overleaf and latex.
+
+`modelsummary` is great too because it's customizable and it also helps to create coefficient plots.
+
+```{r}
+# install.packages("modelsummary")
+# install.packages("stargazer")
+library(modelsummary)
+library(stargazer)
+```
+
+## More on modelsummary and stargazer. 
+
+How would we interpret `resultsmod1`? 
+- gdppc has a small but statistically significant and positive effect on v2x_polyarchy, though the magnitude of the effect is minimal.
+- presidential regimes are associated with lower v2x_polyarchy scores, and this negative effect is statistically significant.
+- the intercept and both predictors have strong statistical significance, so we can be pretty confident in our model's predictive power.
+
+Note: the stargazer output is identitical to the modelsummary output, its just specifically for LaTex
+
+```{r}
+# modelsummary - first you type in your model, 
+# fmt lets you define how many decimal points to include
+# estimate lets you specify whether you want to see p values, stars, or confidence intervals
+# you can add more things if you want to change labels, omit specific estimates, etc. google/chat is your friend
+# more *** = more statistical significance 
+resultsmod1 = modelsummary(model1, fmt=2, estimate = "{estimate}{stars}[{conf.low}, {conf.high}]")
+
+resultsmod1
+
+#stargazer - first you type in your model, 
+# title lets you add a title
+# align is for the table to be aligned
+# dep.var.labels allows you to name your DV
+# covariate.labels allows you to name your IVs
+
+
+stargazmod1 = stargazer(model1,
+                        title="Regression Results",
+                        align=TRUE, dep.var.labels="Democracy",
+                        covariate.labels=c("GDP pc","Presidentialism"))
+# note that stargazer only produces latex output! which is perfect to use with overleaf!!!!
+stargazmod1
+```
+
+## Great, now lets plot!
+
+In this model, the effect of gdppc and presidentialism is constant because it's a linear relationship. 
+
+A useful package that allows us to plot our regression without going into doing things by hand is called `marginaleffects`!
+
+```{r}
+# install.packages("marginaleffects")
+library(marginaleffects)
+library(ggplot2)
+# install.packages("margins") this is new to me, i just found this recently
+library(margins)
+
+# compute marginal effects for gdppc
+marginal_effects_gdppc <- margins(model1, variables = "gdppc")
+
+# to plot the marginal effects, we need to convert our margins() output into a data frame
+marginal_effects_df <- as.data.frame(marginal_effects_gdppc)
+
+# we will create the plot with the regression line (from the marginal effects) and overlay the actual data points
+ggplot(marginal_effects_df, aes(x = gdppc, y = gdppc)) +
+  geom_line(color = "blue", size = 1) +  # line for marginal effects
+  geom_point(  
+    data = data, # add actual data points
+    aes(
+      x = gdppc,
+      y = v2x_polyarchy,
+      color = factor(presidential)
+    )
+  ) +
+  labs(
+    x = "gdppc",
+    y = "v2x_polyarchy",
+    title = "Regression line and actual data points"
+  ) +
+  theme_minimal() +
+  scale_color_discrete(name = "Presidential")
+```
+
+This plot really doesn't make any sense...so what if we take the log of gdppc? 
+gdppc data tends to be highly skewed because a few countries have very high gdppc while most have lower values. 
+
+This kinda skewness can:
+- make it difficult to visualize data because high gdppc countries can dominate the scale and make other observations cluster together on the lower end of the axis. Not great for interpreting relationships.
+- impact model accuracy because skewed variables can violate regression assumptions like normality of residuals. Also not great for interpreting relationships.
+
+To fix this, we can take the log instead. Logging helps us visualize by compressing the range of values and makes the distribution easier to interpret. Logging "shrinks" larger values more than smaller values, which makes the relationship between variables clearer in both plots and models. So, we can interpret the relationship between gdppc and v2x_polyarchy more easily when we log gdppc.
+
+
+## So, lets take the log of gdppc and do a new model.
+
+```{r}
+library(modelsummary)
+data$loggdppc = log(data$gdppc)
+
+#creating a new model...
+model2 = lm(v2x_polyarchy ~ loggdppc + presidential, data=data)
+
+# if we want to compare the models side by side, we can do so with modelsummary, but first we need to create an object with all of the models we're interested in 
+
+models = list(model1, model2)
+modelstable = modelsummary(models, fmt=2, estimate = "{estimate}{stars}[{conf.low}, {conf.high}]")
+
+# it seems like gdp does have an impact, but because this is the log, these results are not 
+# as straightforward to interpret. for that, we can use marginal effects! 
+
+# first, create our scenarios (i'm creating them based on the middle ranges of gdppc), and we're holding presidentialism constant! 
+summary(data$gdppc)
+
+gdpscen = data.frame(
+  intercept=1,
+  gdppc=seq(5020, 85343, 100) # 5020 & 85343 comes from the quartiles seen in the console, 100 = increments
+  )
+
+# then we add our logged term
+gdpscen$loggdppc = log(gdpscen$gdppc)
+gdpscen$presidential= 1
+# setting presidential as 1 because in marginal effects, we have to hold observations constant 
+
+# next, we use predict
+gdpscen$dempreds = predict(model2, gdpscen)
+
+
+# lastly, we can plot
+ggplot() +
+  geom_point(
+    data=data, 
+    aes(x=gdppc, y=v2x_polyarchy, color=factor(presidential)),
+    alpha=.5
+  ) +
+  geom_line( # this is the regression line 
+    data=gdpscen,
+    aes(x=gdppc, y=dempreds),
+    size=1
+  ) +
+  labs(
+    x='GDP pc',
+    y='Democracy'
+  ) +
+  theme_bw() +
+  theme(
+    panel.border=element_blank(),
+    axis.ticks=element_blank()
+  )
+
+```
+
+Remember, using `marginaleffects` does not show us the regression. In our case, it just showed us the effect of the log of gdp on democracy. 
+
+So, in the case of our example, `marginaleffects` tell us the size of the impact that a one-unit change in an iv (gdppc) will have on the dependent variable (v2x_polyarchy/democracy score), on average, while keeping other variables constant. So, if the marginal effect of gdppc on v2x_polyarchy is 0.05, it means that for each unit increase in gdppc, the predicted value of v2x_polyarchy increases by 0.05 units, holding other factors constant.

@@ -1,0 +1,293 @@
+---
+title: 'PLS 801: Problem Set 1 Solutions'
+author: "Shahryar Minhas"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment. 
+
+Load libraries in the chunk below.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+Read in data in `parking.csv` as `parking_raw`. 
+
+```{r}
+parking_raw = read_csv('parking.csv')
+```
+
+## Q1
+
+### 1.1
+
+Report how many countries are included in the dataset.
+
+Base R solution:
+
+```{r}
+length( unique( parking_raw$country ) )
+```
+
+dplyr solution: 
+
+```{r}
+parking_raw %>%
+  summarize(
+    n_distinct(country)
+  )
+```
+
+
+### 1.2
+
+Create a new data.frame object `parking` where:
+
+- Only the variables country, viol_pd, temp_post, and wbcode are included ("selected");
+- Countries where viol_pd == -99 (which means that the data is missing) have been filtered out;
+- The variable temp_post has been renamed to viol_pd_post; and
+- The data are sorted ("arranged") by viol_pd in descending order (the first observation should have the highest value).
+
+dplyr solution:
+
+```{r}
+parking = parking_raw %>%
+  select(
+    country, viol_pd, temp_post, wbcode
+  ) %>%
+  filter(
+    viol_pd != -99
+  ) %>%
+  rename(
+    viol_pd_post = temp_post
+  ) %>%
+  arrange(
+    -viol_pd
+  )
+```
+
+Base R solution: 
+
+```{r}
+parkingBase = parking_raw[,c('country', 'viol_pd', 'temp_post', 'wbcode')]
+parkingBase = parkingBase[parkingBase$viol_pd != -99,]
+names(parkingBase)[3] = 'viol_pd_post'
+parkingBase = parkingBase[order(parkingBase$viol_pd, decreasing=TRUE),]
+```
+
+
+### 1.3 
+
+Include the output from running `str(parking)` (or the Stata equivalent) in your report. How many countries are now included in the dataset?
+
+```{r}
+str(parking)
+```
+
+## Q2
+
+### 2.1
+
+Compute the following statistics using built-in functions:
+
+- The mean of `viol_pd`
+- The median of `viol_pd`
+- The mode of `viol_pd`
+
+First a quick mode function implementation, you are not required to understand this code. 
+
+```{r}
+mode = function(x){
+  x = x[!is.na(x)]
+  cnts = sort(table(x), decreasing=TRUE)
+  maxVal = cnts[1]
+  ids = names(cnts[cnts==maxVal])
+  if( length(ids)>1 ){ 
+    out = paste(ids, collapse=', ')  
+  } else { out = ids  }
+  return(ids)
+}
+```
+
+Dplyr solution to actual question: 
+
+```{r}
+parking %>%
+  summarize(
+    avg = mean(viol_pd),
+    mid = median(viol_pd),
+    mostFreq = mode(viol_pd)
+  )
+```
+
+Base R solution: 
+
+```{r}
+mean(parking$viol_pd)
+median(parking$viol_pd)
+mode(parking$viol_pd)
+```
+
+
+### 2.2 
+
+Make a histogram and density distribution of `viol_pd` (add a title and label the axes on both plots).
+
+Since many of you probably did something like the below (I didn't add a title but you could have using the title parameter in the labs function):
+
+```{r}
+# Note that here, we're trying to put two plots together that have different scales on the y axis. if we wanted to do the ggplot approach, we can add aes(y=8.5*..count..) to the geom_density line. We chose 8.5 as our scale. We select 8.5 because we're adjusting density height so that the highest point matches the highest point of the histogram BUT this approach will never be perfect. 
+
+# Here's what happens if we don't adjust for density height. 
+ggplot(parking, aes(x=viol_pd)) +
+  geom_histogram(color='white') +
+  geom_density(size=1) +
+  labs(
+    y='Count', 
+    x='Parking Violations (1997-2002)'
+  ) +
+  theme_bw() +
+  theme(
+    axis.ticks = element_blank(),
+    panel.border = element_blank()
+  ) 
+
+
+# Here's what happens when you approach the sol by adjusting the density y axis by our estimation of 8.5
+ggplot(parking, aes(x=viol_pd)) +
+  geom_histogram(color='white') +
+  geom_density(aes(y=8.5*..count..), size=1) +
+  labs(
+    y='Count', 
+    x='Parking Violations (1997-2002)'
+  ) +
+  theme_bw() +
+  theme(
+    axis.ticks = element_blank(),
+    panel.border = element_blank()
+  ) 
+
+# a neater solution is to adjust the geom_histogram line and adjust it
+ggplot(parking, aes(x=viol_pd)) +
+  geom_histogram(aes(y=..density..), color='white') +
+  geom_density(size=1) +
+  labs(title="Parking violations",
+    y='Count', 
+    x='Parking Violations (1997-2002)'
+  ) +
+  theme_bw() +
+  theme(
+    axis.ticks = element_blank(),
+    panel.border = element_blank()
+  ) 
+```
+
+Here's an alternative using the patchwork package that allows us to combine multiple ggplot graphics into a single plot (you're basically overlapping the plots)
+
+```{r}
+library(patchwork)
+
+ggHist = ggplot(parking, aes(x=viol_pd)) +
+  geom_histogram(color='white') +
+  labs(
+    y='Count', 
+    x='Parking Violations (1997-2002)'
+  ) +
+  theme_bw() +
+  theme(
+    axis.ticks = element_blank(),
+    panel.border = element_blank()
+  ) 
+
+ggDens = ggplot(parking, aes(x=viol_pd)) +
+  geom_density(size=1) +
+  labs(
+    y='Density', 
+    x='Parking Violations (1997-2002)'
+  ) +
+  theme_bw() +
+  theme(
+    axis.ticks = element_blank(),
+    panel.border = element_blank()
+  ) 
+
+ggHist / ggDens
+```
+
+
+## Q3
+
+### 3.1
+
+Compute the following statistics using built-in functions:
+
+- The mean of `viol_pd_post`
+- The median of `viol_pd_post`
+- The mode of `viol_pd_post`
+
+```{r}
+parking %>%
+  summarize(
+    avg = mean(viol_pd_post),
+    mid = median(viol_pd_post),
+    mostFreq = mode(viol_pd_post)
+  )
+```
+
+### 3.2
+
+Discuss whether the above statistics in comparison to your results from Q2.1 imply that Bloomberg's intervention was successful. 
+
+The average fell from 19.3 to 0.4, the median from 7.8 to 0.2, and the mode stayed the same. The change does suggest that the parking violation world after the intervention was different than pre the intervention. 
+
+## Q4
+
+### 4.1
+
+Create a new data frame, `top10`, that only includes the ten countries with the most parking violations.
+
+Notice that you've already sorted the parking data so all you need to do is extract the first ten rows. 
+
+dplyr solution: 
+
+```{r}
+top10 = parking %>% top_n(n=10, wt=viol_pd)
+```
+
+
+Base R solution:
+
+```{r}
+top10Base = parking[1:10,]
+```
+
+### 4.2/4.3
+
+In the top10 data frame, create a new variable called `viol_diff` that captures the effectiveness of Bloomberg’s intervention (i.e., the difference between `viol_pd_post` and `viol_pd`). Sort the top10 data frame by `viol_diff` (from most to least effective) and print it.
+
+dplyr solution:
+
+```{r}
+top10 = top10 %>%
+  mutate(
+    viol_diff = viol_pd_post - viol_pd
+  ) %>%
+  arrange(
+    viol_diff
+  )
+top10
+```
+
+Base R solution: 
+
+```{r}
+top10Base$viol_diff = top10Base$viol_pd_post - top10Base$viol_pd
+top10Base = top10Base[order(top10Base$viol_diff),]
+top10Base
+```
+

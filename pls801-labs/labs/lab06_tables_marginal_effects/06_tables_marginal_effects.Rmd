@@ -1,0 +1,753 @@
+---
+title: "Lab 06: Summary Tables and Marginal Effects (Part 2)"
+author: "Bailey Oates"
+date: "11/13/2024"
+output: pdf_document
+---
+
+the last couple of weeks we have gone over stargazer, marginal effects, model summary, and plot predictions.
+
+today, we are going to cover more of how to create summary tables for our models and more marginal effects and an overview on dummy variables. we are going to be using the same fish data we used last week. 
+
+first, let's review how to create summary tables for models using the `modelsummary` package and more ways to create tables for descriptive statistics. 
+
+```{r}
+library(tidyverse)
+library(haven)
+library(modelsummary)
+library(marginaleffects)
+library(ggplot2)
+
+load('fish.RData')
+```
+
+now that we have loaded in our data, let's try to create a table of descriptive stats using the `datasummary_skim()` function. 
+
+keeping the same variables of interest as last week with the addition of a few more.  
+
+variables of interest: 
+- `fhrev`: level of democracy, measured as the ten year average of freedom house ratings
+- `income`: logged gdp per capital
+- `elf`: ethnic heterogeneity
+- `britcol`: binary indicating whether country was a former british colony
+- `postcom`: binary indicating whether country was a former
+- `opec`: binary indicating whether country is a member of opec
+- `growth`: gdp growth rate
+- `muslim`: binary indicating whether country is muslim
+
+```{r}
+# now lets clean up the variable names
+# this process can be a bit annoying, cleaning data is much easier in stata 
+# for you stata loving ppl 
+fish2 = fish %>%
+  rename("Democracy" = fhrev,
+               "Muslim" = muslim,
+               "Log(GDP per capita)" = income,
+               "Ethnic Hetero." = elf,
+               "GDP Growth" = growth,
+               "Former Brit. Col." = britcol,
+               "Post-Communist" = postcom,
+               "OPEC"= opec
+               )
+
+# rerun on new dataset
+# tinytable v data.frame
+# the difference is that tinytable is a bit more compact
+# and easier to read in the console but data.frame is
+# easier to read in the viewer or in a pdf
+# tinytable gives you a histogram of the data as well
+datasummary_skim(fish2)
+```
+
+but, some of these descriptive stats aren't that useful for categorical variables so lets split up our data into different cont and cat datasets
+
+```{r}
+# first lets isolate the continuous variables
+fish2Cont = select(fish2, 
+                   c(
+                     'Democracy', 
+                     'Log(GDP per capita)',
+                     'Ethnic Hetero.',
+                     'GDP Growth'
+                     )
+                  ) 
+
+# another way to do it is by indexing use base R code instead of tidyverse, remember that 
+# we use [ ] to index and then select the row and then the column we want to keep
+# so here we want cols 2, 4, 5, 6 to create data with only the cont variables
+# which are columns 2, 4, 5, and 6
+fish2Cont = fish2[,c(2, 4, 5, 6)]
+
+# and then the cat vars
+fish2Cat = select(fish2, 
+                   c(
+                     'Muslim', 
+                     'Former Brit. Col.',
+                     'Post-Communist',
+                     'OPEC'
+                   )
+                  )
+
+# now we want to convert each cat variable to a factor
+# remember: factors are used for storing cate data, which means data that can be 
+# divided into distinct cats that are either be nominal (unordered, like colors or gender) 
+# or ordinal (ordered, like low, medium, high)
+fish2Cat$'Muslim' = factor(fish2Cat$'Muslim')
+fish2Cat$'Former Brit. Col.' = factor(fish2Cat$'Former Brit. Col.')
+fish2Cat$'Post-Communist' = factor(fish2Cat$'Post-Communist')
+fish2Cat$'OPEC' = factor(fish2Cat$'OPEC')
+
+# cool. now lets remake our tables
+# datasummary_skim() is like the same thing as summary(), 
+# but it gives you a bit more info
+datasummary_skim(fish2Cont)
+```
+
+lets interpret the output of the continuous variables table: 
+
+overall we know from this table...
+- `Democarcy` has values ranging from 1 (min) to 7 (max) with an average of 4.2. this shows us moderate variability (sd = 1.8).
+
+- `Log(GDP per capita)` ranges from 2.0 to 4.7, with an average of 3.2 and relatively low variability (SD = 0.7).
+
+- `Ethnic Hetero.` is bounded between 0.0 and 1.0, and also shows low variability.
+
+- `GDP Growth` has a ffairly broad range from -9.8 to 7.5. this suggests to us that different countries had significant variation in growth rates, with both negative and positive values. The sd of 2.8 also suggests that there is a lot of variability in GDP growth.
+
+```{r}
+# and for categorical, we just need to tell datasummary that the type 
+# of vars is categorical
+datasummary_skim(fish2Cat, type='categorical')
+
+# we can do lots of other fancy things as well
+# for instance, with datasummary_balance we can 
+# get descriptive stats for subsets of the population
+# in this case, we get descriptive stats for non muslim and muslim countries
+datasummary_balance(~muslim, data=fish)
+
+# notice the warning. this is not an error. 
+```
+
+now let's run models and practice more with interpreting
+
+*main model in fish's paper interpretation:*
+we have some significant vars: muslim, income, and opec. these are stat sig predictors of democracy scores. being a predominantly muslim country and being a member of OPEC are associated with lower democracy scores. higher income is associated with a higher dem score.
+
+we also have some non-significant vars: elf, growth, britcol, and postcom. we do not see statistically significant effects.
+
+overall, this model explains about 57% of the variation in democracy scores, which indicates a reasonably good fit, though there is still a substantial portion of variance left unexplained.
+
+```{r}
+# main model in fish's paper
+mod = lm(
+  fhrev ~
+    muslim + income + elf + growth +
+    britcol + postcom + opec, data=fish)
+
+summary(mod)
+```
+*model with muslim interaction interpretation:*
+the interaction bw muslim and income is stat sig, which tells us that the effect of income on democracy score is different for predominantly muslim countries compared to others. the positive effect of income on democracy decreases in predominantly muslim countries.
+
+we have some sig vars: muslim, income, and the interaction term (muslim:income). so we know that they are significant predictors of democracy scores in countries.
+
+we also have some non-significant variables (elf, growth, britcol, postcom, opec) do not have significant effects on democracy.
+
+overall, adding in the interaction term of `muslim` improved our model's explanatory power. the results suggest that the rel bw income and democracy varies depending on whether a country is predominantly muslim or not. 
+
+```{r}
+# model with muslim interaction
+modMuslim = lm(
+  fhrev ~
+    muslim + income + elf + growth +
+    britcol + postcom + opec + muslim*income, data=fish)
+summary(modMuslim)
+```
+
+*model with growth interaction interpretation:*
+
+the interaction bw growth and income is stat sig, which tells us that the effect of income on democracy score is different for countries with different growth rates. the positive effect of income on democracy decreases in countries with higher growth rates.
+
+```{r}
+# model with growth interaction
+modGrowth = lm(
+  fhrev ~
+    muslim + income + elf + growth +
+    britcol + postcom + opec + growth*income, data=fish)
+summary(modGrowth)
+```
+
+now lets make some tables 
+
+```{r}
+# lets make some tables
+table1 = modelsummary(mod, format='markdown')
+table1
+
+# pretty nice?
+# lets fix up the variable names
+# this time it's easier
+table2 = modelsummary(
+  mod,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC'
+  ),
+  format='markdown' # telling r that the table should be rendered in markdown
+)
+table2
+
+# ppl like to add stars to indicate significance
+# it also is nice to add stars bc it makes it easier to read in a presentation
+# or in a paper
+table3 = modelsummary(
+  mod,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC'
+  ),
+  stars=TRUE,
+  format='markdown'
+)
+table3
+
+# but, we dont need all these stars
+table4 = modelsummary(
+  mod,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC'
+  ),
+  stars=c('*' = .1, '**' = .05, '***' = .01),
+  format='markdown'
+)
+table4
+
+# what about the other models!
+# so now we are including the og model from fish's paper 
+# as well as the model with the muslim interaction
+table5 = modelsummary(
+  list(mod, modMuslim),
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC'
+  ),
+  stars=c('*' = .1, '**' = .05),
+  format='markdown'
+)
+table5
+
+# its fine, but we could make it prettier 
+# so lets fix labels to show our interaction
+table6 = modelsummary(
+  list("Fish's OG Model" = mod, "Muslim Interaction" = modMuslim), # but i want the columns in the table to be labeled 
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)'
+  ),
+  stars=c('*' = .1, '**' = .05),
+  format='markdown'
+)
+table6
+
+# and last model, lets fix the labels right away and include column names 
+table7 = modelsummary(
+  list("Fish's OG Model" = mod, "Muslim Interaction" = modMuslim, "Growth Interaction" = modGrowth),
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  ),
+  stars=c('*' = .1, '**' = .05),
+  format='markdown'
+)
+table7
+```
+
+cool. now, let's explore different kinds of coefficient plots
+
+```{r}
+# very easy to modify the code above to produce a coefficient plot
+# you can almost just copy and paste and then replace
+# modelsummary with modelplot
+# so, starting from the last model we made: table7
+plot1 = modelplot(
+  list(mod, modMuslim, modGrowth),
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  )  
+)
+# we can check out the plot through our console 
+plot1
+
+# but what if we dont what to show the intercept
+plot2 = modelplot(
+  list(mod, modMuslim, modGrowth),
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  ),
+  coef_omit='(Intercept)'# we are omitting intercept from the plot 
+)
+plot2
+
+# this is another way to give more meaningful names to our models in 
+# one line of code. this is doing the same thing as we did above, but 
+# in one line of code instead 
+# first create an object with a list of our models of interest
+# and then use the name function to assign meaningful names to them
+models = list(mod, modMuslim, modGrowth)
+names(models) = c('Fish`s OG Model', 'Muslim Interaction', 'Growth Interaction')
+
+plot3 = modelplot(
+  models,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  ),
+  coef_omit='(Intercept)'
+)
+plot3
+# what if we wanted to move the legend? 
+# we can use it as a ggplot object
+plot4 = modelplot(
+  models,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  ),
+  coef_omit='(Intercept)'
+) + 
+  theme( # same code as above, but specifying the position of the legend
+    legend.position='top'
+  )
+
+# but what about the significance we saw earlier? 
+# how do clearly indicate significance?
+# one way is to add a vertical dashed line at the zero 
+# position, and any linerange that does not overlap with
+# zero, can be considered statistically significant at the
+# defined confidence interval (default in modelplot is .95)
+plot5 = modelplot(
+  models,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  ),
+  coef_omit='(Intercept)'
+) + 
+  theme(
+    legend.position='top'
+  ) + # same code as above, but adding a vertical dashed line at zero
+  geom_vline(aes(xintercept=0), color='red', linetype='dashed')
+
+# and what if we wanted to split up the info because there
+# are just too many lines on top of one another here
+# we wnat to make it more readable 
+plot6 = modelplot(
+  models,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'    
+  ),
+  coef_omit='(Intercept)'
+) + # same code as above, but adding a facet grid to split up the models
+  facet_grid(~model) + 
+  theme(
+    legend.position='top'
+  ) 
+
+# and lastly, what if we wanted to change the 
+# confidence level? 
+# we use the coef_level input
+plot7 = modelplot(
+  models,
+  coef_rename=c(
+    'muslim' = 'Muslim',
+    'income' = 'Log(GDP per capita)',
+    'elf' = 'Ethnic Hetero.',
+    'growth' = 'GDP growth',
+    'britcol' = 'Former Brit. Col.',
+    'postcom' = 'Post-Communist',
+    'opec' = 'OPEC',
+    'muslim:income' = 'Muslim*Log(GDP per capita)',
+    'income:growth' = 'GDP Growth*Log(GDP per capita)'  
+  ),
+  coef_omit='(Intercept)',
+  conf_level=.95
+) + geom_vline(aes(xintercept=0), linetype='dashed', color='red') +
+  facet_grid(~model) +
+  theme(
+    legend.position='top'
+  ) 
+```
+
+now we can review marginal effects (again, we have already covered marginal effects in lab 4 and the review for lab 4)
+
+note: the output of marginal effects and model summary look similar, right? but the use for each is different and depends on what you are trying to do (ie, what kinda model you are running). 
+
+`modelsummary`: generates tables or coefficient plots that summarize model results, focusing on average marginal effects. However, for models with interactions, interpreting based solely on these summaries may overlook the nuanced, conditional effects between variables.
+
+`marginaleffects`: provides tools for creating prediction and marginal effect plots, which are useful for visualizing model results, particularly when interactions are involved. This package allows for a more detailed and accurate exploration of how effects vary across values of interacting variables.
+- `plot_slopes` is what we use to plot marginal effects. just the function of `marginaleffects` has been deprecated.
+
+```{r}
+# this is just a package we're going to use patch
+# together separate ggplot objects into
+# one plot
+library(patchwork)
+
+# and let's use the same models as above
+
+fish$muslim = factor(fish$muslim)
+fish$britcol = factor(fish$britcol)
+fish$postcom = factor(fish$postcom)
+fish$opec = factor(fish$opec)
+
+# main model in fish's paper
+mod = lm(
+  fhrev ~
+    muslim + income + elf + growth +
+    britcol + postcom + opec, data=fish)
+
+summary(mod)
+
+# model with muslim interaction
+modMuslim = lm(
+  fhrev ~
+    muslim + income + elf + growth +
+    britcol + postcom + opec + muslim*income, data=fish)
+summary(modMuslim)
+
+# model with growth interaction
+modGrowth = lm(
+  fhrev ~
+    muslim + income + elf + growth +
+    britcol + postcom + opec + growth*income, data=fish)
+
+summary(modGrowth)
+
+# and if we do marginal effects by hand...
+
+# define income values that we want to generate predictions for
+incVals = seq(min(fish$income), max(fish$income), .1)
+
+# create a scenario
+scen = data.frame(
+	cbind(
+		1, 0, incVals,
+		mean(fish$elf), mean(fish$growth),
+		0, 0, 0
+	)
+)
+
+# add column names to the scenario
+names(scen) = c(
+  'intercept', 'muslim', 'income', 'elf',
+  'growth', 'britcol', 'postcom', 'opec')
+
+# have to do some additional work if the dataset that we passed
+# to lm included factor variables
+scen$muslim = factor(scen$muslim)
+scen$britcol = factor(scen$britcol)
+scen$postcom = factor(scen$postcom)
+scen$opec = factor(scen$opec)
+
+# then we generated predictions with the predict function we used last week
+preds = predict(mod,
+                newdata=scen,
+                interval='confidence')
+
+# next we recombined our scenario with the result from preds
+# so that we could give ggplot all the info necessary to
+# construct the plot
+ggData = data.frame(cbind(preds, scen))
+
+ggManual = ggplot(ggData, aes(x=income, y=fit, ymin=lwr, ymax=upr)) +
+	geom_line() +
+	geom_ribbon(alpha=.5)
+ggManual
+```
+
+how would we interpret the graoh above?
+-  as income (Log GDP per capita) increases, the predicted democracy score increases. this suggests to us that there is a positive association. the shaded area shows us the confidence interval, which reflects the uncertainty in our predictions.
+
+
+#### STOP HERE ####
+
+we are going to be going over more marginaleffects/plot_slopes and how to create more complex plots with them.
+
+
+lets do the same thing we did above but using marginaleffects/plot_slopes.
+
+```{r}
+ggIncome = plot_predictions(mod, 'income')
+ggIncome
+
+# what will it do with binary variables?
+ggMuslim = plot_predictions(mod, 'muslim')
+ggMuslim
+
+# how do we clean up these plots? here, we're adding the 
+# data and fixing the labels, remember these are 
+# ggplot objects
+ggIncomeCleaned = ggIncome +
+  labs(
+    x='Log(GDP per capita)',
+    y='Predicted Democracy Scores'
+  ) +
+  geom_point(
+    data=fish,
+    aes(x=income, y=fhrev)
+  )
+ggIncomeCleaned
+
+# how do we clean up the muslim one
+ggMuslimCleaned = ggMuslim +
+  labs(
+    x='Muslim Country or Not (1, 0)',
+    y='Predicted Democracy Scores'
+  ) +
+  geom_jitter(
+    data=fish,
+    aes(x=muslim, y=income),
+    width=.25, alpha=.3
+  )
+ggMuslimCleaned
+```
+
+
+```{r}
+# let's see what happens "behind the scenes", here, we're setting the
+# newdata argument to the different values that we have of the muslim var
+pred = predictions(mod, newdata=datagrid(muslim=c(0,1)))
+pred
+
+# this time lets talk a bit more about the
+# "scenario" that the predictions are based off of
+pred[,c(9:15)]
+
+# note the dimensions of our "scenario"
+dim(pred)
+
+# we're getting only 2 scens because we only have 2 values of muslim, 
+# and the rest of the variables are set to their mean
+
+# it's equivalent to the number of
+# unique values of muslim that
+# we're testing when setting
+# everything to its average
+
+```
+
+is getting scenarios at the mean val. realistic? some would suggest that we're estimating the effect of our vars of interest for the average case when we should be interested in estimating the average effect in the population
+
+```{r}
+# what they suggest doing is generating
+# "scenarios" that look like this
+pred = predictions(mod,
+	newdata=datagrid( #datagrid is different from mean, it's essentially builds a data frame of typical rows
+		muslim=c(0,1),
+		grid_type='counterfactual'
+	))
+head(pred[,c(10:16)])
+
+# this is a lot bigger
+# lets try to understand why
+dim(pred)
+
+# how big was the fish dataset?
+dim(fish)
+
+# the counterfactual pred object
+# is exactly twice the size as
+# the fish dataset because we're
+# repeating each observation
+# from the actual data for
+# the different values of the
+# variable whose effect
+# we're trying to visualize
+
+# in this case muslim has two
+# unique values (0,1), so
+# we repeat the fish data twice
+
+# how do we get something useful out of this?
+# summarize to get averages across population
+
+### this code below using summary only works
+# in marginaleffect package versions before 
+# 0.8
+# avgMuslimPreds = summary(pred, by='muslim')
+# avgMuslimPreds
+
+# new version would look like this, where
+# we actually provide the prediction argument
+# to the 
+avgMuslimPreds = predictions(mod,
+	newdata=datagrid( #datagrid is different from mean, it's essentially builds a data frame of typical rows
+		muslim=c(0,1),
+		grid_type='counterfactual'
+	),
+	by='muslim'
+	)
+
+# we can again use plot_predictions
+# with some extra parameters to get a plot
+# using this scenario building approach, specifically:
+obsVizMuslim = plot_predictions(
+  mod,
+  'muslim',
+  newdata=datagrid(
+    muslim=c(0,1),
+    grid_type='counterfactual'
+  ))
+
+# lets compare with what we got using the
+# average case approach (the plus, here is
+# coming from patchwork, we are "patching"
+# together two ggplot objects into one)
+obsVizMuslim + ggMuslim
+
+# lets re do the income example
+# generate predictions using observed value
+# approach
+obsVizIncome = plot_predictions(
+  mod,
+  'income',
+  newdata=datagrid(
+    income=incVals,
+    grid_type='counterfactual'
+  )
+)
+
+# compare
+obsVizIncome / ggIncome
+
+# last lets redo out interaction example using this observed value approach
+plot_predictions(
+  modMuslim,
+  'income',
+  newdata=datagrid(
+    income=incVals,
+    muslim=c(0,1),
+    grid_type='counterfactual'
+  )
+)
+```
+
+last, lets do some conditional marginal effects
+
+this is useful when a model includes interaction terms and we want to plot how the marginal effect of a variable changes as the value of a “condition” (or “moderator”) variable changes
+
+```{r}
+# we can create fictional scenarios easily
+
+# The “Marginal Effect at the Mean” is a marginal effect 
+# calculated for a hypothetical observation where each 
+# regressor is set at its mean or mode. 
+# To calculate the MEM, we can set the newdata argument, 
+# which determines the values of predictors at 
+# which we want to compute marginal effects:
+
+# lets start with the base model, 
+# same og model from fish's paper
+slopes(mod, newdata='mean') 
+summary(mod)
+
+margeff_muslimIncome <- slopes(
+  modMuslim,
+  variables = "income",
+  by = "muslim",
+  newdata='mean'
+)
+margeff_muslimIncome
+
+# instead of trying to plot this ourselves we can just
+# use the plot_slopes function
+plot_slopes(modMuslim, 'income', 'muslim') # here, we put the effect we want to observe effect first and the variable we want it to be conditional on second
+
+# and as before we can clean up
+plot_slopes(modMuslim, 'income', 'muslim') +
+  labs(
+    x = "Muslim Country Status (1 = Muslim, 0 = Non-Muslim)",
+    y = "Marginal Effect of Income on Democracy Scores",
+    fill = "Muslim Country Status"
+  ) +
+  theme_minimal()
+```
